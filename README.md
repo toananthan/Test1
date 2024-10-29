@@ -712,6 +712,8 @@ If conflicts are detected, the output will show the conflicting field definition
 
 Conflicts detected among schemas:
 
+```python
 Field 'userId' has conflicting definitions:
  - In schema 'schema1.avsc': 'string'
  - In schema 'schema2.avsc': 'int'
+```
