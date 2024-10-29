@@ -717,3 +717,127 @@ Field 'userId' has conflicting definitions:
  - In schema 'schema1.avsc': 'string'
  - In schema 'schema2.avsc': 'int'
 ```
+
+---
+
+To extend the script to support complex type comparisons, we need to handle cases where fields might have nested or array types. For Avro, complex types include records (nested objects), arrays, maps, unions, enums, and fixed-length byte arrays. This updated script will:
+
+Parse schemas as before.
+Compare each field's type in detail, even if it’s a complex type.
+Report conflicts based on differences in field structures, types, or nested definitions.
+Here's an updated version of the script with complex type support:
+
+```python
+python
+Copy code
+import os
+import fastavro
+from collections import defaultdict
+
+def load_schemas(schema_dir):
+    schemas = {}
+    for filename in os.listdir(schema_dir):
+        if filename.endswith(".avsc"):
+            with open(os.path.join(schema_dir, filename), "r") as file:
+                schema = fastavro.schema.load_schema(file)
+                schemas[filename] = schema
+    return schemas
+
+def compare_types(type1, type2):
+    """Recursively compare two Avro types, including complex structures."""
+    if type(type1) != type(type2):
+        return False
+
+    if isinstance(type1, dict) and isinstance(type2, dict):
+        if type1.get("type") != type2.get("type"):
+            return False
+        if type1["type"] == "record":
+            # Compare fields in nested records
+            fields1 = {field["name"]: field["type"] for field in type1["fields"]}
+            fields2 = {field["name"]: field["type"] for field in type2["fields"]}
+            return all(
+                compare_types(fields1.get(f), fields2.get(f)) for f in fields1.keys() | fields2.keys()
+            )
+        elif type1["type"] == "array":
+            # Compare array item types
+            return compare_types(type1["items"], type2["items"])
+        elif type1["type"] == "map":
+            # Compare map value types
+            return compare_types(type1["values"], type2["values"])
+        elif type1["type"] == "enum":
+            # Compare enums by symbols
+            return type1.get("symbols") == type2.get("symbols")
+        elif type1["type"] == "fixed":
+            # Compare fixed types by size
+            return type1.get("size") == type2.get("size")
+    
+    # For primitive or union types, check for equality
+    return type1 == type2
+
+def check_for_conflicts(schemas):
+    field_definitions = defaultdict(list)
+    conflicts = []
+
+    # Track field definitions across schemas
+    for schema_name, schema in schemas.items():
+        for field in schema.get("fields", []):
+            field_name = field["name"]
+            field_type = field["type"]
+
+            # Store each field definition with its schema name
+            field_definitions[field_name].append((schema_name, field_type))
+
+    # Check for conflicts in field definitions
+    for field_name, definitions in field_definitions.items():
+        first_type = definitions[0][1]
+        for schema_name, field_type in definitions[1:]:
+            if not compare_types(first_type, field_type):
+                conflicts.append((field_name, definitions))
+                break
+
+    return conflicts
+
+def main():
+    schema_dir = "path/to/your/schemas"  # Replace with the directory path containing your .avsc files
+    schemas = load_schemas(schema_dir)
+    conflicts = check_for_conflicts(schemas)
+
+    if conflicts:
+        print("Conflicts detected among schemas:")
+        for field_name, definitions in conflicts:
+            print(f"\nField '{field_name}' has conflicting definitions:")
+            for schema_name, field_type in definitions:
+                print(f" - In schema '{schema_name}': {field_type}")
+    else:
+        print("No conflicts detected among schemas.")
+
+if __name__ == "__main__":
+    main()
+Explanation of Complex Type Handling
+compare_types Function:
+
+```
+
+Primitive Types: If type1 and type2 are primitive types (like string, int), it simply checks if they are equal.
+Records: For nested records, it checks that each field within both records has the same name and type.
+Arrays: It ensures both are arrays and that their item types match.
+Maps: It ensures both are maps and that their value types match.
+Enums: Compares symbols to ensure that the set of allowed values in enums are identical.
+Fixed: Compares size to ensure fixed-length byte arrays match.
+check_for_conflicts Function:
+
+This function tracks field definitions across schemas.
+If two schemas define a field with different types, it uses compare_types to detect structural mismatches, capturing only the genuine conflicts.
+Example Output for Conflicts
+This script will give detailed output if there’s a conflict, helping you locate and resolve incompatible field definitions:
+
+```python
+css
+Copy code
+Conflicts detected among schemas:
+
+Field 'userData' has conflicting definitions:
+ - In schema 'schema1.avsc': {'type': 'record', 'name': 'UserData', 'fields': [{'name': 'userId', 'type': 'string'}]}
+ - In schema 'schema2.avsc': {'type': 'record', 'name': 'UserData', 'fields': [{'name': 'userId', 'type': 'int'}]}
+This way, you can effectively identify and resolve conflicts, even with complex, nested schemas.
+```
