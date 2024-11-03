@@ -1,4 +1,4 @@
-# AVRO schema Deserialization interseptor
+# I. AVRO schema Deserialization interseptor
 
 To read data or log a key field from an event before it encounters a deserialization exception, you can modify your Kafka consumer logic to handle potentially problematic data gracefully. This involves catching deserialization errors and logging key information from the event payload before the error occurs. Below are some approaches to achieve this:
 
