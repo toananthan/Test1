@@ -506,18 +506,16 @@ Using avro-tools can help identify whether your issue lies with the data structu
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
 
-import java.util.ArrayList;
-import java.util.List;
-
-public class AvroFieldPathExtractor {
+public class AvroSchemaFieldPathsExtractor {
 
     public static void main(String[] args) {
-        // Example Avro schema as a string
+        // Example schema as a JSON string
         String schemaJson = "{"
                 + "\"type\": \"record\","
                 + "\"name\": \"Person\","
                 + "\"fields\": ["
                 + "  {\"name\": \"name\", \"type\": \"string\"},"
+                + "  {\"name\": \"age\", \"type\": \"int\"},"
                 + "  {\"name\": \"address\", \"type\": {"
                 + "    \"type\": \"record\","
                 + "    \"name\": \"Address\","
@@ -525,41 +523,85 @@ public class AvroFieldPathExtractor {
                 + "      {\"name\": \"city\", \"type\": \"string\"},"
                 + "      {\"name\": \"zipcode\", \"type\": \"int\"}"
                 + "    ]"
+                + "  }},"
+                + "  {\"name\": \"phoneNumbers\", \"type\": {"
+                + "    \"type\": \"array\","
+                + "    \"items\": \"string\""
+                + "  }},"
+                + "  {\"name\": \"metadata\", \"type\": {"
+                + "    \"type\": \"map\","
+                + "    \"values\": \"string\""
+                + "  }},"
+                + "  {\"name\": \"preferences\", \"type\": [\"null\", {"
+                + "    \"type\": \"enum\","
+                + "    \"name\": \"Preference\","
+                + "    \"symbols\": [\"HIGH\", \"MEDIUM\", \"LOW\"]"
+                + "  }]},"
+                + "  {\"name\": \"identifier\", \"type\": {"
+                + "    \"type\": \"fixed\", \"name\": \"ID\", \"size\": 16"
                 + "  }}"
                 + "]"
                 + "}";
 
         Schema schema = new Schema.Parser().parse(schemaJson);
-        List<String> fieldPaths = new ArrayList<>();
-        extractFieldPaths(schema, "", fieldPaths);
-
-        // Print the extracted field paths
-        for (String path : fieldPaths) {
-            System.out.println(path);
-        }
+        System.out.println("Field Paths and Their Types:");
+        extractFieldPathsAndTypes(schema, "");
     }
 
     /**
-     * Recursively extracts field paths from an Avro schema.
+     * Recursively extracts and prints field paths and their types from an Avro schema.
      *
      * @param schema     the current schema
      * @param parentPath the current path prefix
-     * @param fieldPaths the list to store field paths
      */
-    private static void extractFieldPaths(Schema schema, String parentPath, List<String> fieldPaths) {
-        if (schema.getType() == Schema.Type.RECORD) {
-            for (Field field : schema.getFields()) {
-                String fieldPath = parentPath.isEmpty() ? field.name() : parentPath + "." + field.name();
-                if (field.schema().getType() == Schema.Type.RECORD) {
-                    // Recurse for nested record fields
-                    extractFieldPaths(field.schema(), fieldPath, fieldPaths);
-                } else {
-                    fieldPaths.add(fieldPath);
+    private static void extractFieldPathsAndTypes(Schema schema, String parentPath) {
+        switch (schema.getType()) {
+            case RECORD:
+                for (Field field : schema.getFields()) {
+                    String fieldPath = parentPath.isEmpty() ? field.name() : parentPath + "." + field.name();
+                    extractFieldPathsAndTypes(field.schema(), fieldPath);
                 }
-            }
+                break;
+
+            case ARRAY:
+                String arrayPath = parentPath + "[]";
+                System.out.println(arrayPath + " : array of " + schema.getElementType().getType());
+                extractFieldPathsAndTypes(schema.getElementType(), arrayPath);
+                break;
+
+            case MAP:
+                String mapPath = parentPath + "<>";
+                System.out.println(mapPath + " : map of " + schema.getValueType().getType());
+                extractFieldPathsAndTypes(schema.getValueType(), mapPath);
+                break;
+
+            case UNION:
+                for (Schema subSchema : schema.getTypes()) {
+                    if (subSchema.getType() != Schema.Type.NULL) { // Skip 'null' in union
+                        extractFieldPathsAndTypes(subSchema, parentPath);
+                    }
+                }
+                break;
+
+            case ENUM:
+                System.out.println(parentPath + " : enum (" + schema.getEnumSymbols() + ")");
+                break;
+
+            case FIXED:
+                System.out.println(parentPath + " : fixed (size=" + schema.getFixedSize() + ")");
+                break;
+
+            default:
+                // Handle primitive types like STRING, INT, BOOLEAN, etc.
+                System.out.println(parentPath + " : " + schema.getType());
+                break;
         }
     }
 }
 
 ```
+---
+
+
+
 
