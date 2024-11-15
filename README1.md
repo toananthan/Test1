@@ -599,6 +599,7 @@ public class AvroSchemaFieldPathsExtractor {
 }
 
 ```
+# 2. Here's a Java program to extract and print all the distinct types in an Avro schema, including nested and complex types like arrays, records, and enums.
 ---
 ```java
 import org.apache.avro.Schema;
@@ -685,6 +686,184 @@ public class AvroDistinctTypesExtractor {
 
             default:
                 // Other types like ENUM, FIXED, STRING, etc. are automatically added
+                break;
+        }
+    }
+}
+
+```
+---
+# 3. To compare fields across Avro schemas in a folder that share a common namespace and identify conflicts (fields with the same path but different types), you can write a Java program leveraging the Avro library. The following program reads all .avsc files in a directory, parses them, and compares their fields to find conflicts.
+
+```java
+import org.apache.avro.Schema;
+import org.apache.avro.Schema.Field;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+public class AvroSchemaConflictFinder {
+
+    public static void main(String[] args) {
+        String folderPath = "path_to_folder_with_schemas"; // Replace with the actual folder path
+
+        try {
+            // Read all Avro schemas in the folder
+            List<Schema> schemas = Files.walk(Paths.get(folderPath))
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".avsc"))
+                    .map(path -> {
+                        try {
+                            return new Schema.Parser().parse(new File(path.toString()));
+                        } catch (IOException e) {
+                            throw new RuntimeException("Error reading schema file: " + path, e);
+                        }
+                    })
+                    .collect(Collectors.toList());
+
+            // Compare fields across schemas
+            Map<String, Schema> fieldPaths = new HashMap<>();
+            for (Schema schema : schemas) {
+                extractFieldsWithPaths(schema, "", fieldPaths);
+            }
+
+        } catch (IOException e) {
+            System.err.println("Error reading schemas: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Extracts fields with their full paths and checks for conflicts.
+     *
+     * @param schema     the schema being processed
+     * @param parentPath the parent path
+     * @param fieldPaths a map of field paths to their schema types
+     */
+    private static void extractFieldsWithPaths(Schema schema, String parentPath, Map<String, Schema> fieldPaths) {
+        switch (schema.getType()) {
+            case RECORD:
+                for (Field field : schema.getFields()) {
+                    String fieldPath = parentPath.isEmpty() ? field.name() : parentPath + "." + field.name();
+                    if (fieldPaths.containsKey(fieldPath)) {
+                        Schema existingSchema = fieldPaths.get(fieldPath);
+                        if (!existingSchema.equals(field.schema())) {
+                            System.out.println("Conflict detected at: " + fieldPath);
+                            System.out.println("Type 1: " + existingSchema.getType());
+                            System.out.println("Type 2: " + field.schema().getType());
+                        }
+                    } else {
+                        fieldPaths.put(fieldPath, field.schema());
+                    }
+                    extractFieldsWithPaths(field.schema(), fieldPath, fieldPaths);
+                }
+                break;
+
+            case ARRAY:
+                extractFieldsWithPaths(schema.getElementType(), parentPath + "[]", fieldPaths);
+                break;
+
+            case MAP:
+                extractFieldsWithPaths(schema.getValueType(), parentPath + "<>", fieldPaths);
+                break;
+
+            case UNION:
+                for (Schema subSchema : schema.getTypes()) {
+                    if (subSchema.getType() != Schema.Type.NULL) { // Ignore null in union types
+                        extractFieldsWithPaths(subSchema, parentPath, fieldPaths);
+                    }
+                }
+                break;
+
+            default:
+                // For primitive and other types, no recursion required
+                break;
+        }
+    }
+}
+
+```
+---
+# 4. To print all the fields with their paths that have aliases in an Avro schema, you can adapt the program to specifically look for aliases defined for each field. Here's a Java program that extracts such fields
+
+```java
+import org.apache.avro.Schema;
+import org.apache.avro.Schema.Field;
+
+import java.util.List;
+
+public class AvroSchemaAliasExtractor {
+
+    public static void main(String[] args) {
+        // Example Avro schema with aliases
+        String schemaJson = "{"
+                + "\"type\": \"record\","
+                + "\"name\": \"Person\","
+                + "\"fields\": ["
+                + "  {\"name\": \"name\", \"type\": \"string\", \"aliases\": [\"fullName\", \"nickname\"]},"
+                + "  {\"name\": \"age\", \"type\": \"int\"},"
+                + "  {\"name\": \"address\", \"type\": {"
+                + "    \"type\": \"record\","
+                + "    \"name\": \"Address\","
+                + "    \"fields\": ["
+                + "      {\"name\": \"city\", \"type\": \"string\", \"aliases\": [\"town\"]},"
+                + "      {\"name\": \"zipcode\", \"type\": \"int\"}"
+                + "    ]"
+                + "  }},"
+                + "  {\"name\": \"phoneNumbers\", \"type\": {"
+                + "    \"type\": \"array\","
+                + "    \"items\": \"string\""
+                + "  }, \"aliases\": [\"contacts\"]}"
+                + "]"
+                + "}";
+
+        Schema schema = new Schema.Parser().parse(schemaJson);
+        System.out.println("Fields with Aliases:");
+        extractFieldsWithAliases(schema, "");
+    }
+
+    /**
+     * Recursively extracts and prints fields with aliases from an Avro schema.
+     *
+     * @param schema     the current schema
+     * @param parentPath the current path prefix
+     */
+    private static void extractFieldsWithAliases(Schema schema, String parentPath) {
+        switch (schema.getType()) {
+            case RECORD:
+                for (Field field : schema.getFields()) {
+                    String fieldPath = parentPath.isEmpty() ? field.name() : parentPath + "." + field.name();
+                    List<String> aliases = field.aliases();
+                    if (aliases != null && !aliases.isEmpty()) {
+                        System.out.println(fieldPath + " : aliases = " + aliases);
+                    }
+                    extractFieldsWithAliases(field.schema(), fieldPath);
+                }
+                break;
+
+            case ARRAY:
+                extractFieldsWithAliases(schema.getElementType(), parentPath + "[]");
+                break;
+
+            case MAP:
+                extractFieldsWithAliases(schema.getValueType(), parentPath + "<>");
+                break;
+
+            case UNION:
+                for (Schema subSchema : schema.getTypes()) {
+                    if (subSchema.getType() != Schema.Type.NULL) {
+                        extractFieldsWithAliases(subSchema, parentPath);
+                    }
+                }
+                break;
+
+            default:
+                // Handle primitives and other types without further recursion
                 break;
         }
     }
