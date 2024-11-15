@@ -506,10 +506,12 @@ Using avro-tools can help identify whether your issue lies with the data structu
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
 
+import java.util.List;
+
 public class AvroSchemaFieldPathsExtractor {
 
     public static void main(String[] args) {
-        // Example schema as a JSON string
+        // Example Avro schema as a JSON string
         String schemaJson = "{"
                 + "\"type\": \"record\","
                 + "\"name\": \"Person\","
@@ -536,10 +538,7 @@ public class AvroSchemaFieldPathsExtractor {
                 + "    \"type\": \"enum\","
                 + "    \"name\": \"Preference\","
                 + "    \"symbols\": [\"HIGH\", \"MEDIUM\", \"LOW\"]"
-                + "  }]},"
-                + "  {\"name\": \"identifier\", \"type\": {"
-                + "    \"type\": \"fixed\", \"name\": \"ID\", \"size\": 16"
-                + "  }}"
+                + "  }]}"
                 + "]"
                 + "}";
 
@@ -564,20 +563,20 @@ public class AvroSchemaFieldPathsExtractor {
                 break;
 
             case ARRAY:
-                String arrayPath = parentPath + "[]";
-                System.out.println(arrayPath + " : array of " + schema.getElementType().getType());
-                extractFieldPathsAndTypes(schema.getElementType(), arrayPath);
+                String arrayTypePath = parentPath + "[]";
+                System.out.println(arrayTypePath + " : " + schema.getElementType().getType());
+                extractFieldPathsAndTypes(schema.getElementType(), arrayTypePath);
                 break;
 
             case MAP:
-                String mapPath = parentPath + "<>";
-                System.out.println(mapPath + " : map of " + schema.getValueType().getType());
-                extractFieldPathsAndTypes(schema.getValueType(), mapPath);
+                String mapTypePath = parentPath + "<>";
+                System.out.println(mapTypePath + " : " + schema.getValueType().getType());
+                extractFieldPathsAndTypes(schema.getValueType(), mapTypePath);
                 break;
 
             case UNION:
                 for (Schema subSchema : schema.getTypes()) {
-                    if (subSchema.getType() != Schema.Type.NULL) { // Skip 'null' in union
+                    if (!subSchema.getType().equals(Schema.Type.NULL)) { // Skip 'null' in union
                         extractFieldPathsAndTypes(subSchema, parentPath);
                     }
                 }
@@ -588,11 +587,11 @@ public class AvroSchemaFieldPathsExtractor {
                 break;
 
             case FIXED:
-                System.out.println(parentPath + " : fixed (size=" + schema.getFixedSize() + ")");
+                System.out.println(parentPath + " : fixed (" + schema.getFixedSize() + ")");
                 break;
 
             default:
-                // Handle primitive types like STRING, INT, BOOLEAN, etc.
+                // Handle primitive types (STRING, INT, FLOAT, etc.)
                 System.out.println(parentPath + " : " + schema.getType());
                 break;
         }
@@ -601,7 +600,97 @@ public class AvroSchemaFieldPathsExtractor {
 
 ```
 ---
+```java
+import org.apache.avro.Schema;
+import org.apache.avro.Schema.Type;
+import org.apache.avro.Schema.Field;
 
+import java.util.HashSet;
+import java.util.Set;
+
+public class AvroDistinctTypesExtractor {
+
+    public static void main(String[] args) {
+        // Example schema as a JSON string
+        String schemaJson = "{"
+                + "\"type\": \"record\","
+                + "\"name\": \"Person\","
+                + "\"fields\": ["
+                + "  {\"name\": \"name\", \"type\": \"string\"},"
+                + "  {\"name\": \"age\", \"type\": \"int\"},"
+                + "  {\"name\": \"address\", \"type\": {"
+                + "    \"type\": \"record\","
+                + "    \"name\": \"Address\","
+                + "    \"fields\": ["
+                + "      {\"name\": \"city\", \"type\": \"string\"},"
+                + "      {\"name\": \"zipcode\", \"type\": \"int\"}"
+                + "    ]"
+                + "  }},"
+                + "  {\"name\": \"phoneNumbers\", \"type\": {"
+                + "    \"type\": \"array\","
+                + "    \"items\": \"string\""
+                + "  }},"
+                + "  {\"name\": \"tags\", \"type\": {"
+                + "    \"type\": \"array\","
+                + "    \"items\": {"
+                + "      \"type\": \"enum\","
+                + "      \"name\": \"Tag\","
+                + "      \"symbols\": [\"FRIEND\", \"FAMILY\", \"WORK\"]"
+                + "    }"
+                + "  }}"
+                + "]"
+                + "}";
+
+        Schema schema = new Schema.Parser().parse(schemaJson);
+        Set<Type> distinctTypes = new HashSet<>();
+        extractDistinctTypes(schema, distinctTypes);
+
+        // Print the distinct types
+        System.out.println("Distinct Types in Schema:");
+        for (Type type : distinctTypes) {
+            System.out.println(type);
+        }
+    }
+
+    /**
+     * Recursively extracts distinct types from an Avro schema.
+     *
+     * @param schema       the current schema
+     * @param distinctTypes the set to store distinct types
+     */
+    private static void extractDistinctTypes(Schema schema, Set<Type> distinctTypes) {
+        // Add the current schema type
+        distinctTypes.add(schema.getType());
+
+        switch (schema.getType()) {
+            case RECORD:
+                for (Field field : schema.getFields()) {
+                    extractDistinctTypes(field.schema(), distinctTypes);
+                }
+                break;
+
+            case ARRAY:
+                extractDistinctTypes(schema.getElementType(), distinctTypes);
+                break;
+
+            case MAP:
+                extractDistinctTypes(schema.getValueType(), distinctTypes);
+                break;
+
+            case UNION:
+                for (Schema subSchema : schema.getTypes()) {
+                    extractDistinctTypes(subSchema, distinctTypes);
+                }
+                break;
+
+            default:
+                // Other types like ENUM, FIXED, STRING, etc. are automatically added
+                break;
+        }
+    }
+}
+
+```
 
 
 
