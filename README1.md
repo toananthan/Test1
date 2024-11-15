@@ -499,3 +499,67 @@ java -jar avro-tools-1.11.0.jar compat --reader-schema new-schema.avsc --writer-
 
 ```
 Using avro-tools can help identify whether your issue lies with the data structure, the schema compatibility, or how the binary data is being serialized/deserialized.
+
+---
+# 1. Here's a Java example that extracts and prints all field paths from a nested Avro schema
+```java
+import org.apache.avro.Schema;
+import org.apache.avro.Schema.Field;
+
+import java.util.ArrayList;
+import java.util.List;
+
+public class AvroFieldPathExtractor {
+
+    public static void main(String[] args) {
+        // Example Avro schema as a string
+        String schemaJson = "{"
+                + "\"type\": \"record\","
+                + "\"name\": \"Person\","
+                + "\"fields\": ["
+                + "  {\"name\": \"name\", \"type\": \"string\"},"
+                + "  {\"name\": \"address\", \"type\": {"
+                + "    \"type\": \"record\","
+                + "    \"name\": \"Address\","
+                + "    \"fields\": ["
+                + "      {\"name\": \"city\", \"type\": \"string\"},"
+                + "      {\"name\": \"zipcode\", \"type\": \"int\"}"
+                + "    ]"
+                + "  }}"
+                + "]"
+                + "}";
+
+        Schema schema = new Schema.Parser().parse(schemaJson);
+        List<String> fieldPaths = new ArrayList<>();
+        extractFieldPaths(schema, "", fieldPaths);
+
+        // Print the extracted field paths
+        for (String path : fieldPaths) {
+            System.out.println(path);
+        }
+    }
+
+    /**
+     * Recursively extracts field paths from an Avro schema.
+     *
+     * @param schema     the current schema
+     * @param parentPath the current path prefix
+     * @param fieldPaths the list to store field paths
+     */
+    private static void extractFieldPaths(Schema schema, String parentPath, List<String> fieldPaths) {
+        if (schema.getType() == Schema.Type.RECORD) {
+            for (Field field : schema.getFields()) {
+                String fieldPath = parentPath.isEmpty() ? field.name() : parentPath + "." + field.name();
+                if (field.schema().getType() == Schema.Type.RECORD) {
+                    // Recurse for nested record fields
+                    extractFieldPaths(field.schema(), fieldPath, fieldPaths);
+                } else {
+                    fieldPaths.add(fieldPath);
+                }
+            }
+        }
+    }
+}
+
+```
+
