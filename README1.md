@@ -872,4 +872,242 @@ public class AvroSchemaAliasExtractor {
 ```
 
 
+---
 
+To dynamically add or update Drools rules in a Spring Boot application without requiring deployment, you can use a combination of Drools’ KnowledgeBuilder and a strategy to load rules from an external source (e.g., database, file system, or a remote service). Here’s a step-by-step guide:
+
+# 1. Store Rules Externally
+Store your Drools rules (.drl files) in a location outside the packaged application:
+File System: Keep .drl files in a directory.
+Database: Store rules as text in a database table.
+Remote Service: Fetch rules via a REST API.
+
+# 2. Use KnowledgeBuilder to Load Rules Dynamically
+Use Drools' KnowledgeBuilder to compile .drl files dynamically at runtime.
+Example of dynamic loading:
+
+```java
+import org.kie.api.KieServices;
+import org.kie.api.builder.KieFileSystem;
+import org.kie.api.runtime.KieContainer;
+import org.kie.api.runtime.KieSession;
+
+public class DroolsDynamicLoader {
+
+    public KieContainer loadRules(String ruleContent) {
+        KieServices kieServices = KieServices.Factory.get();
+        KieFileSystem kieFileSystem = kieServices.newKieFileSystem();
+
+        // Write rule content to the KieFileSystem
+        kieFileSystem.write("src/main/resources/rule.drl", ruleContent);
+
+        // Build the rules
+        kieServices.newKieBuilder(kieFileSystem).buildAll();
+
+        // Create and return the KieContainer
+        return kieServices.newKieContainer(kieServices.getRepository().getDefaultReleaseId());
+    }
+}
+```
+
+Use loadRules() to reload rules whenever the configuration changes.
+
+# 3. Watch for Rule Changes
+Implement a mechanism to monitor changes to rules, e.g.:
+
+File System: Use a file watcher (e.g., java.nio.file.WatchService) to detect changes.
+Database: Use a scheduled job or database triggers to detect updates.
+Remote Service: Use a polling mechanism or webhooks to fetch the latest rules.
+
+# 4. Reload Rules Dynamically
+Use the dynamically loaded KieContainer to create a new KieSession whenever rules are updated.
+Example:
+
+```java
+@Service
+public class RuleEngineService {
+    private KieContainer kieContainer;
+
+    public void reloadRules(String newRuleContent) {
+        DroolsDynamicLoader loader = new DroolsDynamicLoader();
+        this.kieContainer = loader.loadRules(newRuleContent);
+    }
+
+    public void executeRules(Object fact) {
+        KieSession kieSession = kieContainer.newKieSession();
+        kieSession.insert(fact);
+        kieSession.fireAllRules();
+        kieSession.dispose();
+    }
+}
+```
+
+# 5. Expose API to Trigger Rule Updates
+Provide an API to reload rules manually or programmatically after configuration changes.
+Example:
+
+```java
+@RestController
+public class RuleController {
+    @Autowired
+    private RuleEngineService ruleEngineService;
+
+    @PostMapping("/rules/reload")
+    public ResponseEntity<String> reloadRules(@RequestBody String ruleContent) {
+        ruleEngineService.reloadRules(ruleContent);
+        return ResponseEntity.ok("Rules reloaded successfully");
+    }
+}
+
+```
+
+# 6. Best Practices
+Error Handling: Ensure the new rules are validated and compiled successfully before applying them.
+Versioning: Maintain versioning of rules to allow rollback if needed.
+Configuration: Use Spring profiles or externalized configurations to manage rule sources.
+
+With this setup, you can dynamically add or update rules without redeploying the application, ensuring flexibility and minimal downtime.
+
+---
+
+Here’s a complete working example of a Spring Boot application that dynamically loads Drools rules from an external source (e.g., a file system) and applies them without requiring redeployment.
+
+# 1. Project Setup
+Add the following dependencies to your pom.xml:
+
+```java
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.drools</groupId>
+        <artifactId>drools-core</artifactId>
+        <version>8.x.x</version> <!-- Replace with the latest Drools version -->
+    </dependency>
+    <dependency>
+        <groupId>org.kie</groupId>
+        <artifactId>kie-api</artifactId>
+        <version>8.x.x</version> <!-- Replace with the latest version -->
+    </dependency>
+</dependencies>
+
+```
+
+# 2. Dynamic Rule Loader
+Create a class to load Drools rules dynamically.
+
+```java
+package com.example.droolsdemo.service;
+
+import org.kie.api.KieServices;
+import org.kie.api.builder.KieFileSystem;
+import org.kie.api.runtime.KieContainer;
+import org.kie.api.runtime.KieSession;
+import org.springframework.stereotype.Service;
+
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
+@Service
+public class DroolsService {
+
+    private KieContainer kieContainer;
+
+    public void loadRules(String ruleFilePath) throws Exception {
+        KieServices kieServices = KieServices.Factory.get();
+        KieFileSystem kieFileSystem = kieServices.newKieFileSystem();
+
+        // Load rules from the file system
+        String ruleContent = new String(Files.readAllBytes(Paths.get(ruleFilePath)));
+        kieFileSystem.write("src/main/resources/rule.drl", ruleContent);
+
+        kieServices.newKieBuilder(kieFileSystem).buildAll();
+        this.kieContainer = kieServices.newKieContainer(kieServices.getRepository().getDefaultReleaseId());
+    }
+
+    public void executeRules(Object fact) {
+        if (kieContainer == null) {
+            throw new IllegalStateException("Rules are not loaded yet!");
+        }
+
+        KieSession kieSession = kieContainer.newKieSession();
+        kieSession.insert(fact);
+        kieSession.fireAllRules();
+        kieSession.dispose();
+    }
+}
+
+```
+
+# 3. Controller for Rule Management
+Create a REST controller to allow dynamic rule loading and execution.
+```java
+package com.example.droolsdemo.controller;
+
+import com.example.droolsdemo.service.DroolsService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/rules")
+public class RuleController {
+
+    @Autowired
+    private DroolsService droolsService;
+
+    @PostMapping("/load")
+    public ResponseEntity<String> loadRules(@RequestParam String filePath) {
+        try {
+            droolsService.loadRules(filePath);
+            return ResponseEntity.ok("Rules loaded successfully from " + filePath);
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Failed to load rules: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/execute")
+    public ResponseEntity<String> executeRules(@RequestBody Object fact) {
+        try {
+            droolsService.executeRules(fact);
+            return ResponseEntity.ok("Rules executed successfully.");
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Failed to execute rules: " + e.getMessage());
+        }
+    }
+}
+
+```
+
+# 4. Sample Rule File
+Create a sample .drl file (e.g., rules/sample.drl):
+
+```java
+package com.example.rules;
+
+rule "Example Rule"
+when
+    $fact: Object() // Change this condition as per your needs
+then
+    System.out.println("Rule triggered for fact: " + $fact);
+end
+
+```
+
+# 5. Run and Test
+Steps:
+1. Start the Spring Boot application.
+2. Use the /rules/load API to load rules dynamically
+
+curl -X POST "http://localhost:8080/rules/load?filePath=/path/to/sample.drl"
+3. Use the /rules/execute API to test rules execution:
+curl -X POST "http://localhost:8080/rules/execute" -H "Content-Type: application/json" -d '{"name": "Test Fact"}'
+
+# 6. Directory Structure
+Ensure your .drl files are accessible from the file system. For example:
+
+/path/to/sample.drl
+
+This application dynamically loads Drools rules from the file system, executes them, and provides REST APIs to trigger the process
