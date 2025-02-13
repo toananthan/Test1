@@ -418,6 +418,8 @@ class Trie {
 These advanced algorithms are essential for optimizing solutions to complex problems. 
 
 ---
+
+```java
 import java.util.regex.*;
 
 public class DecimalValidator {
@@ -461,4 +463,4 @@ public class DecimalValidator {
         }
     }
 }
-
+```
