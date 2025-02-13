@@ -417,3 +417,48 @@ class Trie {
 
 These advanced algorithms are essential for optimizing solutions to complex problems. 
 
+---
+import java.util.regex.*;
+
+public class DecimalValidator {
+    public static void main(String[] args) {
+        String[] testCases = {
+            "LOCAMT=2;257.28; bb; DHFG KDF",  // valid
+            "LOCAMT=2;237.28 DHFG KDF",       // valid
+            "LOCAMT=2;237.284 DHFG KDF",      // invalid
+            "LOCAMT=4;33367.00",              // valid
+            "LOCAMT=4;4567",                  // invalid
+            "LOCAMT=4;4H67",                  // invalid
+            "LOCAMT=4;4H67.88"                 // invalid
+        };
+        
+        for (String attributeVal : testCases) {
+            validateDecimal(attributeVal);
+        }
+    }
+
+    public static void validateDecimal(String attributeVal) {
+        // Extracting substring after first semicolon
+        String[] parts = attributeVal.split(";", 2);
+        if (parts.length < 2) {
+            System.out.println("Invalid: No semicolon found - " + attributeVal);
+            return;
+        }
+        
+        String valuePart = parts[1].trim();
+        
+        // Regex pattern explanation:
+        // ^(\d+) - Starts with digits before decimal
+        // \\.(\d{2}) - Ensures exactly two decimal places
+        // (?!\d) - Ensures the third character after decimal is not a digit
+        Pattern pattern = Pattern.compile("^(\\d+)\\.(\\d{2})(?!\\d).*");
+        Matcher matcher = pattern.matcher(valuePart);
+        
+        if (matcher.find()) {
+            System.out.println("Valid amount: " + matcher.group());
+        } else {
+            System.out.println("Invalid: " + attributeVal);
+        }
+    }
+}
+
