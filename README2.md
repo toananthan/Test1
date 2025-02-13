@@ -425,13 +425,13 @@ import java.util.regex.*;
 public class DecimalValidator {
     public static void main(String[] args) {
         String[] testCases = {
-            "LOCAMT=2;257.28; bb; DHFG KDF",  // valid
-            "LOCAMT=2;237.28 DHFG KDF",       // valid
-            "LOCAMT=2;237.284 DHFG KDF",      // invalid
-            "LOCAMT=4;33367.00",              // valid
-            "LOCAMT=4;4567",                  // invalid
-            "LOCAMT=4;4H67",                  // invalid
-            "LOCAMT=4;4H67.88"                 // invalid
+            "BACAMT=2;257.28; bb; DHFG KDF",  // valid
+            "BACAMT=2;237.28 DHFG KDF",       // valid
+            "BACAMT=2;237.284 DHFG KDF",      // invalid
+            "BACAMT=4;33367.00",              // valid
+            "BACAMT=4;4567",                  // invalid
+            "BACAMT=4;4H67",                  // invalid
+            "BACAMT=4;4H67.88"                 // invalid
         };
         
         for (String attributeVal : testCases) {
