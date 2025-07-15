@@ -1,0 +1,366 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>App Tree Visualization</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #FFD700; /* Gold background */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    canvas {
+      display: block;
+    }
+    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@700&display=swap');
+  </style>
+</head>
+<body>
+<script>
+let nodes = [];
+let cameraOffset = { x: 0, y: 0 };
+let zoom = 1;
+let minZoom = 0.5;
+let maxZoom = 2;
+let dragging = false;
+let lastMouse = { x: 0, y: 0 };
+
+// Default expansion directions per level (0: CREATED, 1: INDIVIDUAL/JOINT, etc.)
+let expansionDirections = ["bottom", "bottom", "bottom", "bottom", "bottom", "bottom"];
+
+class Node {
+  constructor(x, y, label, value, parent = null) {
+    this.x = x;
+    this.y = y;
+    this.label = label;
+    this.value = value;
+    this.radius = 40; // Fixed radius
+    this.parent = parent;
+    this.children = [];
+    this.isExpanded = false;
+    this.targetX = x;
+    this.targetY = y;
+    this.alpha = 255;
+    this.targetAlpha = 255;
+    this.hover = false;
+  }
+
+  display() {
+    if (this.parent) {
+      stroke(50, 50, 100, this.alpha);
+      strokeWeight(this.hover ? 6 : 4);
+      line(this.x, this.y, this.parent.x, this.parent.y);
+    }
+
+    fill(this.hover ? [70, 70, 120, this.alpha] : [50, 50, 100, this.alpha]);
+    stroke(255, this.alpha);
+    strokeWeight(this.hover ? 6 : 4);
+    ellipse(this.x, this.y, this.radius * 2);
+
+    fill(0, 0, 0, this.alpha * 0.5); // Shadow
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(this.radius / 3);
+    text(`${this.label}\n${this.value}`, this.x + 1, this.y + 1);
+    fill(255, this.alpha); // White text
+    text(`${this.label}\n${this.value}`, this.x, this.y);
+  }
+
+  update() {
+    this.x = lerp(this.x, this.targetX, 0.15);
+    this.y = lerp(this.y, this.targetY, 0.15);
+    this.alpha = lerp(this.alpha, this.targetAlpha, 0.15);
+  }
+
+  isClicked(mx, my) {
+    let worldX = (mx - cameraOffset.x) / zoom;
+    let worldY = (my - cameraOffset.y) / zoom;
+    let d = dist(worldX, worldY, this.x, this.y);
+    return d < this.radius;
+  }
+
+  isHovered(mx, my) {
+    let worldX = (mx - cameraOffset.x) / zoom;
+    let worldY = (my - cameraOffset.y) / zoom;
+    let d = dist(worldX, worldY, this.x, this.y);
+    return d < this.radius;
+  }
+}
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  textAlign(CENTER, CENTER);
+  textFont('Roboto', 700);
+  let root = new Node(width / 2, height / 2, "CREATED", 1000);
+  nodes.push(root);
+}
+
+function draw() {
+  background('#FFD700');
+  push();
+  translate(cameraOffset.x, cameraOffset.y);
+  scale(zoom);
+  for (let node of nodes) {
+    node.hover = node.isHovered(mouseX, mouseY);
+    node.update();
+    node.display();
+  }
+  pop();
+}
+
+function mousePressed() {
+  lastMouse.x = mouseX;
+  lastMouse.y = mouseY;
+  dragging = true;
+}
+
+function mouseReleased() {
+  dragging = false;
+}
+
+function mouseDragged() {
+  if (dragging) {
+    cameraOffset.x += mouseX - lastMouse.x;
+    cameraOffset.y += mouseY - lastMouse.y;
+    lastMouse.x = mouseX;
+    lastMouse.y = mouseY;
+  }
+}
+
+function mouseWheel(event) {
+  let newZoom = zoom - event.delta * 0.001;
+  zoom = constrain(newZoom, minZoom, maxZoom);
+  return false;
+}
+
+function mouseClicked() {
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    let node = nodes[i];
+    if (node.isClicked(mouseX, mouseY)) {
+      if (node.isExpanded) {
+        collapseNode(node);
+      } else {
+        expandNode(node);
+      }
+      return;
+    }
+  }
+}
+
+function getSubtreeWidth(node) {
+  if (!node.isExpanded || node.children.length === 0) {
+    return node.radius * 2;
+  }
+  let totalWidth = 0;
+  for (let child of node.children) {
+    totalWidth += getSubtreeWidth(child);
+  }
+  return max(totalWidth, node.children.length * 100);
+}
+
+function getSubtreeHeight(node) {
+  if (!node.isExpanded || node.children.length === 0) {
+    return node.radius * 2;
+  }
+  let totalHeight = 0;
+  for (let child of node.children) {
+    totalHeight += getSubtreeHeight(child);
+  }
+  return max(totalHeight, node.children.length * 100);
+}
+
+function expandNode(node) {
+  if (node.isExpanded) return;
+  node.isExpanded = true;
+
+  let depth = 0;
+  let current = node;
+  while (current.parent) {
+    depth++;
+    current = current.parent;
+  }
+  let direction = expansionDirections[depth] || "bottom";
+
+  let verticalSpacing, horizontalSpacing, numChildren;
+  let labels, values;
+
+  if (node.label === "CREATED") {
+    labels = ["INDIVIDUAL", "JOINT"];
+    values = [500, 500];
+    numChildren = 2;
+    verticalSpacing = 120;
+    horizontalSpacing = 200;
+  } else if (["INDIVIDUAL", "JOINT"].includes(node.label)) {
+    labels = ["NTB", "ETB"];
+    values = [250, 250];
+    numChildren = 2;
+    verticalSpacing = 100;
+    horizontalSpacing = 180;
+  } else if (["NTB", "ETB"].includes(node.label)) {
+    labels = ["CB", "BB", "CD", "WM", "AUTO"];
+    values = [50, 50, 50, 50, 50];
+    numChildren = 5;
+    verticalSpacing = 90;
+    horizontalSpacing = 150;
+  } else if (["CB", "BB", "CD", "WM", "AUTO"].includes(node.label)) {
+    labels = ["APPROVED", "DECLINED", "ABANDONED", "PENDED", "CANCELLED", "ERRORED"];
+    values = [10, 5, 10, 10, 10, 5];
+    numChildren = 6;
+    verticalSpacing = 80;
+    horizontalSpacing = 120;
+  } else if (node.label === "DECLINED" && node.parent && node.parent.parent && node.parent.parent.parent.label === "JOINT") {
+    labels = ["PRIMARY", "SECONDARY", "BOTH", "ACCOUNT"];
+    values = [4, 1, 5, 5];
+    numChildren = 4;
+    verticalSpacing = 70;
+    horizontalSpacing = 100;
+  } else if (node.label === "DECLINED" && node.parent && node.parent.parent && node.parent.parent.parent.label === "INDIVIDUAL") {
+    labels = ["INDIVIDUAL", "ACCOUNT"];
+    values = [5, 5];
+    numChildren = 2;
+    verticalSpacing = 70;
+    horizontalSpacing = 100;
+  } else if (node.label === "PENDED" && node.parent && node.parent.parent && node.parent.parent.parent.label === "JOINT") {
+    labels = ["PRIMARY", "SECONDARY", "BOTH"];
+    values = [4, 1, 5];
+    numChildren = 3;
+    verticalSpacing = 70;
+    horizontalSpacing = 100;
+  } else if (node.label === "PENDED" && node.parent && node.parent.parent && node.parent.parent.parent.label === "INDIVIDUAL") {
+    labels = ["SELF", "SYSTEM"];
+    values = [5, 5];
+    numChildren = 2;
+    verticalSpacing = 70;
+    horizontalSpacing = 100;
+  } else if (node.label === "ABANDONED" && node.parent && node.parent.parent && node.parent.parent.parent.label === "JOINT") {
+    labels = ["PRIMARY", "SECONDARY"];
+    values = [4, 1];
+    numChildren = 2;
+    verticalSpacing = 70;
+    horizontalSpacing = 100;
+  } else if (node.label === "ERRORED") {
+    if (node.parent && node.parent.parent && node.parent.parent.parent.label === "JOINT") {
+      labels = ["PRIMARY", "SECONDARY", "BOTH", "EXPIRED", "ACCOUNT"];
+      values = [4, 1, 5, 5, 5];
+      numChildren = 5;
+    } else {
+      labels = ["EXPIRED", "ACCOUNT", "INDIVIDUAL"];
+      values = [5, 5, 5];
+      numChildren = 3;
+    }
+    verticalSpacing = 70;
+    horizontalSpacing = 100;
+  } else if ((node.label === "PRIMARY" || node.label === "SECONDARY") && node.parent && node.parent.label === "PENDED" && node.parent.parent && node.parent.parent.parent && node.parent.parent.parent.label === "JOINT") {
+    labels = ["SELF", "SYSTEM"];
+    values = [5, 5];
+    numChildren = 2;
+    verticalSpacing = 70;
+    horizontalSpacing = 100;
+  } else {
+    return; // No further expansion
+  }
+
+  // Dynamically adjust spacing based on subtree size
+  if (direction === "left" || direction === "right") {
+    horizontalSpacing = max(horizontalSpacing, getSubtreeWidth(node) / numChildren);
+  } else {
+    verticalSpacing = max(verticalSpacing, getSubtreeHeight(node) / numChildren);
+  }
+
+  let childCount = 0;
+  for (let i = 0; i < labels.length; i++) {
+    let targetX, targetY;
+    if (direction === "bottom") {
+      targetX = node.x + (childCount - (numChildren - 1) / 2) * horizontalSpacing;
+      targetY = node.y + verticalSpacing;
+    } else if (direction === "top") {
+      targetX = node.x + (childCount - (numChildren - 1) / 2) * horizontalSpacing;
+      targetY = node.y - verticalSpacing;
+    } else if (direction === "left") {
+      targetX = node.x - (childCount + 1) * horizontalSpacing;
+      targetY = node.y;
+    } else if (direction === "right") {
+      targetX = node.x + (childCount + 1) * horizontalSpacing;
+      targetY = node.y;
+    }
+    let child = new Node(node.x, node.y, labels[i], values[i], node);
+    child.targetX = targetX;
+    child.targetY = targetY;
+    nodes.push(child);
+    node.children.push(child);
+    childCount++;
+  }
+}
+
+function collapseNode(node) {
+  if (!node.isExpanded) return;
+  node.isExpanded = false;
+  for (let child of node.children) {
+    collapseNode(child);
+    child.targetX = node.x;
+    child.targetY = node.y;
+    child.targetAlpha = 0;
+  }
+  setTimeout(() => {
+    if (!node.isExpanded) {
+      nodes = nodes.filter(n => !node.children.includes(n));
+      node.children = [];
+    }
+  }, 500);
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  nodes[0].x = width / 2;
+  nodes[0].y = height / 2;
+  nodes[0].targetX = width / 2;
+  nodes[0].targetY = height / 2;
+}
+</script>
+</body>
+</html>
